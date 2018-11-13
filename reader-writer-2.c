@@ -1,104 +1,114 @@
-#define NITERS 100
- /* Sample code demonstrating reader-writers, using 2nd readers-writers
- * solution
+/*
+ * File:   ReadersWriters.c
+ * Author: MHerzog
  *
- * Create NITERS agents, numbered from 1 to NITERS.  Each agent is
- * randomly chosen to bea reader (probability 80%) or a writer
- * (probability 20%).  Writers assign their ID to the global value.
- * Readers read the global value.  Also insert random delays in agent
- * generation so that writers can catch up to the readers.
+ * Created on April 8, 2015, 5:44 PM
  */
-#include "csapp.h"
-#include <stdbool.h>
- /* Uniform random number in [0.0,1.0] */
-static double uniform() {
-    return (double) random() / RAND_MAX;
+
+#include <pthread.h>
+#include <semaphore.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+#define NUM_OF_READERS 5
+#define NUM_READS 200
+#define NUM_WRITES 200
+
+sem_t readerCountMutex; //the mutual exclusion semaphore for the readerCount
+int readerCount; //number of threads reading of wanting to read
+
+sem_t bufferMutex; // mutual exclusion semaphore for the "shared buffer"
+int sharedBuffer; //the "shared buffer"is an int starting at 0.
+                  //readers read its value and print out.
+                  //write increments the value by 1.
+
+int up(sem_t* thisMutex){
+    return sem_post(thisMutex);
 }
- bool choose_with_probability(double prob) {
-    return uniform() <=  prob;
+
+int down(sem_t* thisMutex){
+    return sem_wait(thisMutex);
 }
- /* $begin reader1 */
-/* Global variables */
-int readcnt, writecnt; /* All initially = 0 */
-sem_t rmutex, wmutex, r, w;     /* All initially = 1 */
- void init() {
-    readcnt = 0;
-    writecnt = 0;
-    Sem_init(&rmutex, 0, 1);
-    Sem_init(&wmutex, 0, 1);
-    Sem_init(&w, 0, 1);
-    Sem_init(&r, 0, 1);
+
+void* readerCode(void* reader){
+    int i;
+    int r = *((int *) reader);
+    printf("READER %d CREATED.\n", r);
+    for (i = 0; i < NUM_READS; i++){
+	down(&readerCountMutex);
+	readerCount = readerCount + 1;
+
+	if(readerCount == 1){
+	    down(&bufferMutex);
+	}//if
+
+	up(&readerCountMutex);
+	printf("Reader %d on iteration %d. sharedBuffer is %d.\n", r, i, sharedBuffer);
+
+	down(&readerCountMutex);
+	readerCount = readerCount - 1;
+	printf("reader %d exited. %d readers in buffer.\n", r, readerCount);
+	if(readerCount == 0){
+	    up(&bufferMutex);
+	}
+
+	up(&readerCountMutex);
+    }//for
+    printf("READER %d DONE.\n", r);
+    pthread_exit(0);
 }
- /* Get read access to data and read */
-int ireader(int *buf) 
-{
-    P(&r);   // Permission to attempt read
-    P(&rmutex);
-    readcnt++;
-    if (readcnt == 1) /* First in */
-	P(&w); // Block writers         
-    V(&rmutex);          
-    V(&r);
-     /* Critical section */
-    int v = *buf;
-     P(&rmutex);
-    readcnt--;
-    if (readcnt == 0) /* Last out */
-	V(&w);
-    V(&rmutex);
-    return v;
+
+void* writerCode(void* writer){
+    int i;
+    for(i = 0; i < NUM_WRITES; i++){
+	down(&bufferMutex);
+	sharedBuffer = sharedBuffer + 1;
+	printf("Writer on iteration %d. sharedBuffer is %d.\n", i, sharedBuffer);
+	up(&bufferMutex);
+    }//for
+    pthread_exit(0);
 }
- /* Get write access to data and write */
-void iwriter(int *buf, int v) 
-{
-    P(&wmutex);
-    writecnt++;
-    if (writecnt == 1)
-	P(&r);  // Block readers
-    V(&wmutex);
-     P(&w);
-    /* Critical section */
-    *buf = v;
-    /* Writing happens  */ 
-    V(&w);
-     P(&wmutex);
-    writecnt--;
-    if (writecnt == 0)
-	V(&r);  // Enable readers
-    V(&wmutex);
-}
- int global_value = 0;
- void *rthread(void *vargp) {
-    int id = *(int *) vargp;
-    Free(vargp);
-    int v = ireader(&global_value);
-    printf("Reader %d read value %d\n", id, v);
-    return NULL;
-}
- void *wthread(void *vargp) {
-    int id = *(int *) vargp;
-    Free(vargp);
-    iwriter(&global_value, id);
-    printf("Writer %d wrote value %d\n", id, id);
-    return NULL;
-}
- int main(int argc, char *argv[]) {
-    int niters = NITERS;
-    if (argc > 1)
-	niters = atoi(argv[1]);
-    pthread_t tid[niters];
-    init();
-    int id;
-    for (id = 1; id <= niters; id++) {
-	bool doread = choose_with_probability(0.8);
-	void *vargp = Malloc(sizeof(int));
-	*(int *) vargp = id;
-	Pthread_create(&tid[id-1], NULL,
-		       doread ? rthread : wthread,
-		       vargp);
+
+int main(int argc, char** argv) {
+    //initialize variables
+    int i;
+    readerCount = 0;
+    sharedBuffer = 0;
+    sem_init(&readerCountMutex, 0, 1);
+    sem_init(&bufferMutex, 0, 1);
+
+    //create writer thread
+    pthread_t writerThread;
+    int *temp2 = (int *)malloc(sizeof(int *));
+    pthread_create(&writerThread, 0, writerCode, (void *) temp2);
+
+    //create reader threads
+    pthread_t reads[NUM_OF_READERS];
+    for(i = 0; i < NUM_OF_READERS; i++){
+	int *temp = (int *)malloc(sizeof(int *));
+	*temp = i;
+	pthread_create(&reads[i], 0, readerCode, (void *) temp);
     }
-    for (id = 1; id <= niters; id++) {
-	Pthread_join(tid[id-1], NULL);
+
+    //create writer thread
+//    pthread_t writerThread;
+//    int *temp2 = (int *)malloc(sizeof(int *));
+//    pthread_create(&writerThread, 0, writerCode, (void *) temp2);
+
+    //terminate writer thread
+    pthread_join(writerThread, 0);
+    printf("Writer exited.\n");
+
+    //terminate reader threads
+    for(i = 0; i < NUM_OF_READERS; i++){
+	pthread_join(reads[i], 0);
+	printf("Reader %d exited.\n", i);
     }
-    return 0;
+
+    //close semaphores
+    sem_close(&readerCountMutex);
+    sem_close(&bufferMutex);
+
+    return (EXIT_SUCCESS);
 }
+
