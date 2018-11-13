@@ -58,14 +58,16 @@ void *readerFunction(void* arg) {
 *    @void*  arg: passed input argument is thread number.
 *
 *
-*
-*
 */
-
-
 
     while (true) 
     {
+
+	/*locks mutex, adds reader to queue
+	 * then unlocks mutex
+	 */
+
+	
 
 
         pthread_mutex_lock(&variableMutex);
@@ -78,13 +80,16 @@ void *readerFunction(void* arg) {
     
         pthread_mutex_unlock(&variableMutex);
 
+
+
          
         pthread_mutex_lock(&libraryMutex);
             pthread_mutex_lock(&variableMutex);
                 
-                 // Writers are given higher priority
-                 // checks to see if there are writers 
-                 // waiting before entering
+                 /* Writeres are given highest priority
+		  * if any writers are waiting, lock the library 
+		  * to keep readers from entering 
+		  */
                 while (Writers_In_Queue || Writers_In_Library) 
                 {   
                 
@@ -92,18 +97,19 @@ void *readerFunction(void* arg) {
                     pthread_cond_wait(&entryCond, &libraryMutex);
                     pthread_mutex_lock(&variableMutex);
                 }
+
                 Readers_In_Queue--;
                 Readers_In_Library++;
                 
                 printf("ReaderQueue: %d WriterQueue: %d [in: R:%d W:%d]\n",
                         Readers_In_Queue, Writers_In_Queue, Readers_In_Library, Writers_In_Library);
             
-        
+        	
             pthread_mutex_unlock(&variableMutex);
         pthread_mutex_unlock(&libraryMutex);
         pthread_cond_broadcast(&entryCond);
 
-        /* Reading... */
+        // Simulate reading from file/data from  buffer 
         usleep(rand() % uSecSleep);
 
         pthread_mutex_lock(&libraryMutex);
@@ -114,23 +120,36 @@ void *readerFunction(void* arg) {
                 
                 printf("ReaderQueue: %d WriterQueue: %d [in: R:%d W:%d]\n",
                         Readers_In_Queue, Writers_In_Queue, Readers_In_Library, Writers_In_Library);
-            pthread_mutex_unlock(&variableMutex);
+           
+	       	pthread_mutex_unlock(&variableMutex);
        
         pthread_mutex_unlock(&libraryMutex);
         pthread_cond_broadcast(&entryCond);
 
-        /* Sleep and enter the queue again */
+        // Sleep and enter the queue again 
         usleep(rand() % uSecSleep);
+
+
     }
 }
 
 void *writerFunction(void* arg){
-    
+
+/*
+ *	Start routine for writer threads runs an infinite loop
+ *
+ *	@void* arg: passed input argument is thread number
+ *
+ *
+ */	
 
     while (true) 
     {
         
 
+	/* lock mutex, add writer to queue
+	 * then unlock mutex
+	 */
         pthread_mutex_lock(&variableMutex);
            
             Writers_In_Queue++;
@@ -162,15 +181,18 @@ void *writerFunction(void* arg){
                 printf("ReaderQueue: %d WriterQueue: %d [in: R:%d W:%d]\n",
                         Readers_In_Queue, Writers_In_Queue, Readers_In_Library, Writers_In_Library);
            
-        
+        /* We dont brodcast an unblock of our conditional here 
+	 * since oter writers might be waiting to enter the library
+	 */
             pthread_mutex_unlock(&variableMutex);
         pthread_mutex_unlock(&libraryMutex);
 
-        /* Writing... */
+        //Simulate writing from file /data from buffer 
         usleep(rand() % uSecSleep);
 
         pthread_mutex_lock(&libraryMutex);
-            pthread_mutex_lock(&variableMutex);
+
+      	    pthread_mutex_lock(&variableMutex);
                 
                 Writers_In_Library--;
            
@@ -184,8 +206,9 @@ void *writerFunction(void* arg){
         pthread_mutex_unlock(&libraryMutex);
         pthread_cond_broadcast(&entryCond);
 
-        /* Sleep and enter the queue again */
+        // Sleep and enter the queue again 
         usleep(rand() % uSecSleep);
+
     }
 }
 
@@ -229,8 +252,8 @@ int main(int argc, char** argv) {
     pthread_t *readerThread = calloc(userReaderCount, sizeof(pthread_t));
     pthread_t *writerThread = calloc(userWriterCount, sizeof(pthread_t));
     
-
-    int i = 0;
+    // cast between void * and long are same size - int throws warnings
+    long i = 0;
 
     printf("ReaderQueue: %d WriterQueue: %d [in: R:%d W:%d]\n",
             Readers_In_Queue, Writers_In_Queue, Readers_In_Library, Writers_In_Library);
@@ -256,6 +279,13 @@ int main(int argc, char** argv) {
         }
     }
    //wait for reader threads to terminate
+
+    clock_t begin_reader, begin_writer;
+   double time_spent = 0.0;
+   unsigned int k;
+   begin_reader = clock();
+   
+
     for (i = 0; i < userReaderCount; ++i) 
     {
     
@@ -263,10 +293,12 @@ int main(int argc, char** argv) {
         {  
             perror_exit("Error while waiting for reader thread termination (pthread_join)");
         }
+
+	
     }
    
    free(readerThread);
-    
+   
     //wait for writer threads to terminate
     for (i = 0; i < userWriterCount; ++i) 
     {
@@ -274,6 +306,8 @@ int main(int argc, char** argv) {
         {
             perror_exit("Error while waiting for writer thread termination (pthread_join)");
         }
+
+
     }
     
 
