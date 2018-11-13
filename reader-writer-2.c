@@ -230,7 +230,7 @@ int main(int argc, char** argv) {
         if (scanf("%d", &userReaderCount) == EOF) perror_exit("scanf");
         printf("Number of writers > ");
         if (scanf("%d", &userWriterCount) == EOF) perror_exit("scanf");
-        printf("Starting in 1 sec...\n\n");
+        printf("Starting program\n\n");
         sleep(1);
 
     } 
@@ -241,8 +241,8 @@ int main(int argc, char** argv) {
         userWriterCount = atoi(argv[2]);
         printf("Number of Readers = %d\n", userReaderCount);
         printf("Number of Writers = %d\n", userWriterCount);
-        printf("Starting in 2 sec...\n\n");
-        sleep(2);
+        printf("Starting program\n\n");
+        sleep(1);
     }
     
     //random seed
