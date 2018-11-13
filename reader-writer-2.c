@@ -1,114 +1,132 @@
-/*
- * File:   ReadersWriters.c
- * Author: MHerzog
- *
- * Created on April 8, 2015, 5:44 PM
- */
-
+#include <stdio.h>
 #include <pthread.h>
 #include <semaphore.h>
-#include <stdlib.h>
-#include <stdio.h>
 
-#define NUM_OF_READERS 5
-#define NUM_READS 200
-#define NUM_WRITES 200
+char texto[100];
+int contador=0,k;
+FILE *archivo;
 
-sem_t readerCountMutex; //the mutual exclusion semaphore for the readerCount
-int readerCount; //number of threads reading of wanting to read
+//Threads
+pthread_t w[200],r[200];
 
-sem_t bufferMutex; // mutual exclusion semaphore for the "shared buffer"
-int sharedBuffer; //the "shared buffer"is an int starting at 0.
-                  //readers read its value and print out.
-                  //write increments the value by 1.
+//Semáforos
+sem_t mutex, queue;
+sem_t lector, escritor;
 
-int up(sem_t* thisMutex){
-    return sem_post(thisMutex);
+/******************************************************************************/
+
+void read(){
+  sem_wait(&queue);
+    sem_wait(&lector);
+      sem_wait(&mutex);
+    sem_post(&lector);
+        //ZONA CRITICA
+      archivo = fopen("entrada.txt", "a");
+      printf("\n******************************\nLECTOR");
+      printf("\nLeyendo...");
+      for(k=0;k<100;k++){
+        fputs("LECTOR.\n",archivo);
+      }
+      fclose(archivo);
+      //FINAL ZONA CRITICA
+    sem_post(&mutex);
+  sem_post(&queue);
 }
 
-int down(sem_t* thisMutex){
-    return sem_wait(thisMutex);
-}
+/******************************************************************************/
 
-void* readerCode(void* reader){
-    int i;
-    int r = *((int *) reader);
-    printf("READER %d CREATED.\n", r);
-    for (i = 0; i < NUM_READS; i++){
-	down(&readerCountMutex);
-	readerCount = readerCount + 1;
-
-	if(readerCount == 1){
-	    down(&bufferMutex);
-	}//if
-
-	up(&readerCountMutex);
-	printf("Reader %d on iteration %d. sharedBuffer is %d.\n", r, i, sharedBuffer);
-
-	down(&readerCountMutex);
-	readerCount = readerCount - 1;
-	printf("reader %d exited. %d readers in buffer.\n", r, readerCount);
-	if(readerCount == 0){
-	    up(&bufferMutex);
-	}
-
-	up(&readerCountMutex);
-    }//for
-    printf("READER %d DONE.\n", r);
-    pthread_exit(0);
-}
-
-void* writerCode(void* writer){
-    int i;
-    for(i = 0; i < NUM_WRITES; i++){
-	down(&bufferMutex);
-	sharedBuffer = sharedBuffer + 1;
-	printf("Writer on iteration %d. sharedBuffer is %d.\n", i, sharedBuffer);
-	up(&bufferMutex);
-    }//for
-    pthread_exit(0);
-}
-
-int main(int argc, char** argv) {
-    //initialize variables
-    int i;
-    readerCount = 0;
-    sharedBuffer = 0;
-    sem_init(&readerCountMutex, 0, 1);
-    sem_init(&bufferMutex, 0, 1);
-
-    //create writer thread
-    pthread_t writerThread;
-    int *temp2 = (int *)malloc(sizeof(int *));
-    pthread_create(&writerThread, 0, writerCode, (void *) temp2);
-
-    //create reader threads
-    pthread_t reads[NUM_OF_READERS];
-    for(i = 0; i < NUM_OF_READERS; i++){
-	int *temp = (int *)malloc(sizeof(int *));
-	*temp = i;
-	pthread_create(&reads[i], 0, readerCode, (void *) temp);
+void write(){
+  sem_wait(&escritor);
+    contador++;
+    if(contador==1){
+      sem_wait(&lector);
     }
+    sem_wait(&mutex);
+      //ZONA CRITICA
+      printf("\n******************************\nESCRITOR");
+      archivo=fopen("entrada.txt","a");
+      printf("\nEscribiendo...");
+      for(k=0;k<10;k++){
+        fputs("ESCRITOR.\n",archivo);
+      }
+      fclose(archivo);
+      //FINAL ZONA CRITICA
+    sem_post(&mutex);
+  sem_post(&escritor);
 
-    //create writer thread
-//    pthread_t writerThread;
-//    int *temp2 = (int *)malloc(sizeof(int *));
-//    pthread_create(&writerThread, 0, writerCode, (void *) temp2);
-
-    //terminate writer thread
-    pthread_join(writerThread, 0);
-    printf("Writer exited.\n");
-
-    //terminate reader threads
-    for(i = 0; i < NUM_OF_READERS; i++){
-	pthread_join(reads[i], 0);
-	printf("Reader %d exited.\n", i);
+  sem_wait(&escritor);
+    contador--;
+    if(contador==0){
+      sem_post(&lector);
     }
-
-    //close semaphores
-    sem_close(&readerCountMutex);
-    sem_close(&bufferMutex);
-
-    return (EXIT_SUCCESS);
+  sem_post(&escritor);
 }
 
+/******************************************************************************/
+
+int proceso(int ESC,int LEC){
+  //Se inicializan los semáforos en 1
+  sem_init(&mutex,0,1);
+  sem_init(&queue,0,1);
+  sem_init(&lector,0,1);
+  sem_init(&escritor,0,1);
+  int a,b;
+
+  //Se crean los lectores
+  for(a=0;a<=LEC;a++){
+    pthread_create(&r[a],NULL,(void *)read,NULL);
+  }
+
+  //Luego los escritores
+  for(b=0;b<=ESC;b++){
+    pthread_create(&w[b],NULL,(void *)write,NULL);
+  }
+
+  //Espera lectores
+  for(a=0;a<=LEC;a++){
+    pthread_join(r[a],NULL);
+  }
+
+  //Espera escritores
+  for(b=0;b<=ESC;b++){
+    pthread_join(w[b],NULL);
+  }
+
+  printf("\n");
+  return 0;
+}
+
+/******************************************************************************/
+
+int main(){
+  char caja[100];
+  int writer,reader;
+
+  //LECTOR
+  printf("Ingrese la cantidad de lectores:\n");
+  fgets(caja,sizeof(texto),stdin);
+  sscanf(caja,"%d",&reader);
+
+  while(reader==0 || reader>100){
+    printf("Ingrese un numero valido menor a 100\n");
+    fgets(caja,sizeof(texto),stdin);
+    sscanf(caja,"%d",&reader);
+  }
+  //END LECTOR
+
+  //ESCRITOR
+  printf("Ingrese la cantidad de escritores:\n");
+  fgets(caja,sizeof(texto),stdin);
+  sscanf(caja,"%d",&writer);
+
+  while(writer==0 || writer>100){
+    printf("Ingrese un numero valido menor a 100\n");
+    fgets(caja,sizeof(texto),stdin);
+    sscanf(caja,"%d",&writer);
+  }
+  //END ESCRITOR
+
+  proceso(writer-1,reader-1);
+
+  return(0);
+}
