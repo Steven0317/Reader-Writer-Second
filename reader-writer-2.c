@@ -37,8 +37,7 @@ int Readers_In_Queue = 0;
 int Writers_In_Queue = 0;
 int Readers_In_Library = 0;
 int Writers_In_Library = 0;
-pthread_mutex_t variableMutex = PTHREAD_M
-UTEX_INITIALIZER;
+pthread_mutex_t variableMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t libraryMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t entryCond = PTHREAD_COND_INITIALIZER;
 unsigned long uSecSleep = 1500000;
@@ -51,7 +50,7 @@ perror_exit(char* errorStr)
 
 
 
-void *readerFunciton(void* arg) {
+void *readerFunction(void* arg) {
 /*
 *
 *   Start routine for reader threads runs an infinite loop
@@ -115,8 +114,7 @@ void *readerFunciton(void* arg) {
                 
                 printf("ReaderQueue: %d WriterQueue: %d [in: R:%d W:%d]\n",
                         Readers_In_Queue, Writers_In_Queue, Readers_In_Library, Writers_In_Library);
-            pthr
-            ead_mutex_unlock(&variableMutex);
+            pthread_mutex_unlock(&variableMutex);
        
         pthread_mutex_unlock(&libraryMutex);
         pthread_cond_broadcast(&entryCond);
