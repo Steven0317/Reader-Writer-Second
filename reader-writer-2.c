@@ -1,222 +1,295 @@
-//Nicklaus Krems UID# 36935302
+#include <stdio.h>
+#include <time.h>
+#include <stdlib.h>
+#include <pthread.h>
 
-// CHANGELOG
-// Nov 8, 2018 - Harsha Kuchampudi
-//		- Updated include statements to include unistd.h for sleep
-//		- Added function prototypes for reader and writer functions
-//		- Cleaned variable names and added comments where necessary
-//		- Added pThread attributes and set pThread scope
-//		- Fixed compiler warning when compiled with -Wall
-//		- Added Makefile for simpler building
-//		- Using ftok() for SHMKEY to prevent collisions
-//		- Fixed fscanf() so that references are not used
-//		- Minor misc fixes
-// Nov 5, 2018 - Nicklaus Krems
-//		- Initially created files
+int readersInQueue = 0;
+int writersInQueue = 0;
+int readersInLibrary = 0;
+int writersInLibrary = 0;
+pthread_mutex_t varMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t libraryMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t entryCond = PTHREAD_COND_INITIALIZER;
+unsigned long uSecSleep = 2000000;
 
-#define _REENTRANT
-#include <pthread.h>	// Thread library
-#include <stdio.h>		// Standard input and output
-#include <sys/types.h>	// Types header
-#include <sys/ipc.h>	// Required for shmget
-#include <sys/shm.h>	// Required for shmget
-#include <sys/wait.h>	// Wait function call
-#include <fcntl.h>		// Control
-#include <semaphore.h>	// POSIX semaphores
-#include <stdlib.h>		// Standard library
-#include <unistd.h>		// For sleep function
-
-// Define function prototypes
-void *writer();
-void *reader();
-
-//define our read write counts
-typedef struct
-{
-	int readerCount;	// Stores the number of readers
-	int writerCount;	// Stores the number of writers	
-	int totalCount;		// Stores the total count
-} shared_mem;
-
-shared_mem *total;		// Shared memory to communicate
-key_t SHMKEY;			// Shared memory key
-sem_t sem_reader;		// Lock for the reader
-sem_t sem_writer; 		// Lock for the writer
-sem_t readcount_lock;	// Mutex to protect readerCount
-sem_t writecount_lock;	// Mutex to protect writerCount
-pthread_t tid[40];		// Store the thread ids
-pthread_attr_t attr;    // Store thread attributes
-
-// Function: Writer
-// Description: Writer implementation
-void *writer(){
-
-	sem_wait(&writecount_lock);
-	total -> writerCount++;
-	if (total -> writerCount == 1)
-		sem_wait(&sem_reader);
-	sem_post(&writecount_lock);
-	sem_wait(&sem_writer);
-	
-	// CRITICAL SECTION START
-	sleep(2);
-	total -> totalCount++;
-	printf("Value updated to %d\n",total -> totalCount);
-	// CRITICAL SECTION END
-
-	sem_post(&sem_writer);
-	sem_wait(&writecount_lock);
-	total -> writerCount--;
-	if (total -> writerCount == 0)
-		sem_post(&sem_reader);
-	sem_post(&writecount_lock);
-
-	// Return NULL
-	return NULL;
-
+perror_exit(char* errorStr) {
+    perror(errorStr);
+    exit(EXIT_FAILURE);
 }
 
-// Function: Reader
-// Description: Reader implementation
-void *reader(){
+void *readerF(void* arg) {
+    while (1) {
+        pthread_mutex_lock(&varMutex);
+            readersInQueue++;
+            printf("ReaderQ: %d WriterQ: %d [in: R:%d W:%d]\n",
+                    readersInQueue, writersInQueue, readersInLibrary, writersInLibrary);
+        pthread_mutex_unlock(&varMutex);
 
-	sem_wait(&sem_reader);
-	sem_wait(&readcount_lock);
-	total -> readerCount++;
-	if (total -> readerCount == 1)
-		sem_wait(&sem_writer);
-	sem_post(&readcount_lock);
-	sem_post(&sem_reader);
+        pthread_mutex_lock(&libraryMutex);
+            pthread_mutex_lock(&varMutex);
+                while (writersInQueue || writersInLibrary) {    // Writers have higher prioritu
+                    pthread_mutex_unlock(&varMutex);
+                    pthread_cond_wait(&entryCond, &libraryMutex);
+                    pthread_mutex_lock(&varMutex);
+                }
+                readersInQueue--;
+                readersInLibrary++;
+                printf("ReaderQ: %d WriterQ: %d [in: R:%d W:%d]\n",
+                        readersInQueue, writersInQueue, readersInLibrary, writersInLibrary);
+            pthread_mutex_unlock(&varMutex);
+        pthread_mutex_unlock(&libraryMutex);
+        pthread_cond_broadcast(&entryCond);
 
-	// CRITICAL SECTION START
-	sleep(3);
-	printf("%d: Read in\n", total -> totalCount);
-	// CRITICAL SECTION END
+        /* Reading... */
+        usleep(rand() % uSecSleep);
 
-	sem_wait(&readcount_lock);
-	total -> readerCount--;
-	if (total -> readerCount == 0)
-		sem_post(&sem_writer);
-	sem_post(&readcount_lock);
+        pthread_mutex_lock(&libraryMutex);
+            pthread_mutex_lock(&varMutex);
+                readersInLibrary--;
+                printf("ReaderQ: %d WriterQ: %d [in: R:%d W:%d]\n",
+                        readersInQueue, writersInQueue, readersInLibrary, writersInLibrary);
+            pthread_mutex_unlock(&varMutex);
+        pthread_mutex_unlock(&libraryMutex);
+        pthread_cond_broadcast(&entryCond);
 
-	// Return NULL
-	return NULL;
-
-}
-
-// Function: main
-// Description: Main application logic
-int main(){
-
-	// Shared memory ID and address for allocating
-	// and attaching shared memory	
-	int shared_mem_id;
-	char *shared_mem_addr = NULL;
-
-	// Create and set the shared memory key
-	SHMKEY = ftok(".", 'a');
-	// Allocate the shared memory segment and make sure
-	// that it is created properly
-	if ((shared_mem_id = shmget (SHMKEY, sizeof(total), IPC_CREAT | 0666)) < 0)
-    {
-    	perror ("shmget");
-		exit (1);
-	}
-	// Attach the shared memory
-	if ((total = (shared_mem *) shmat (shared_mem_id, shared_mem_addr, 0)) == (shared_mem *) -1) {
-    	perror ("shmat");
-		exit (0);
-	}
-
-	// Initialize the shared memory values
-	total -> readerCount = 0;
-	total -> writerCount = 0;
-	total -> totalCount = 0;
-
-	// Initialize the global semaphores so that they all have a 
-	// value of 1. Additionally, the second parameter identifies
-	// that the semaphores will be shared between threads
-	sem_init(&sem_reader, 0, 1);
-	sem_init(&sem_writer, 0, 1);
-	sem_init(&readcount_lock, 0, 1);
-	sem_init(&writecount_lock, 0, 1);
-	
-	// Set thread attributes
-    pthread_attr_init(&attr);
-    pthread_attr_setscope(&attr, PTHREAD_SCOPE_SYSTEM);
-
-	//flush out the buffer
-	fflush(stdout);
-
-	// Reading in the input file allowing for fine
-	// tuning of reader and writer inputs
-	FILE* fp = fopen("mydata.dat", "r");
-	//define some desired variables
-	char rw[1];
-	char c[10];
-	//sleep time
-	int num = 0;
-	//for loop definition
-	int i = 0;
-	//defines the maximum numof threads currently
-	int count = 40;
-
-	//loop through the file spiting out pthreads for each reader and writer as desired
-	for(;i<40; i++){
-		//chcek end of file
-		if (fscanf(fp, "%s", rw) != EOF)
-		{
-			//gather the sleep time
-			fscanf(fp, "%s", c);
-			num = atoi(c);
-			//printf("%s %d\n", &rw, num);
-
-			//Identify the use case as a reader or writer and generate the thread
-			if(rw[0] == 'r'){
-				pthread_create(&tid[i], NULL, reader, NULL);
-				//printf("Read done?\n");
-				sleep(num);
-			}else if(rw[0] == 'w'){
-				pthread_create(&tid[i], NULL, writer, NULL);
-				sleep(num);
-			}else{
-				printf("There is an error with the input file \n");
-			}
-		//break out of the loop early and define how many threads exist
-		}else{
-			count = i;
-			break;
-		}
-	}
-	//close the input file
-	fclose(fp);
-	//printf("writes, %d, total read/writes, %d", total->arr[0], count);
-
- 	// Wait for the threads to finish 
- 	for(i = 0; i<count; i++){
- 		pthread_join(tid[i], NULL);
- 	}
-
- 	// Output to see if proper test cases resulted
- 	printf("writes, %d, total read/writes, %d\n", total -> totalCount, count);
-
-	// Clear the shared memory	
-	if (shmdt(total) == -1){
-      perror ("shmdt");
-      exit (-1);
+        /* Sleep and enter the queue again */
+        usleep(rand() % uSecSleep);
     }
-    shmctl(shared_mem_id, IPC_RMID, NULL); 
+}
 
-    // Destroy the created semaphores
-	sem_destroy(&sem_reader);
-	sem_destroy(&sem_writer);
-	sem_destroy(&readcount_lock);
-	sem_destroy(&writecount_lock);
+void *writerF(void* arg){
+    while (1) {
+        pthread_mutex_lock(&varMutex);
+            writersInQueue++;
+            printf("ReaderQ: %d WriterQ: %d [in: R:%d W:%d]\n",
+                    readersInQueue, writersInQueue, readersInLibrary, writersInLibrary);
+        pthread_mutex_unlock(&varMutex);
 
-	// Kill the pthreads and exit the program
-	pthread_exit(NULL);
+        pthread_mutex_lock(&libraryMutex);
+            pthread_mutex_lock(&varMutex);
+                while (readersInLibrary || writersInLibrary) {
+                    pthread_mutex_unlock(&varMutex);
+                    pthread_cond_wait(&entryCond, &libraryMutex);
+                    pthread_mutex_lock(&varMutex);
+                }
+                writersInQueue--;
+                writersInLibrary++;
+                printf("ReaderQ: %d WriterQ: %d [in: R:%d W:%d]\n",
+                        readersInQueue, writersInQueue, readersInLibrary, writersInLibrary);
+            pthread_mutex_unlock(&varMutex);
+        pthread_mutex_unlock(&libraryMutex);
 
-	// Exit successfully
-	exit(0);
+        /* Writing... */
+        usleep(rand() % uSecSleep);
 
+        pthread_mutex_lock(&libraryMutex);
+            pthread_mutex_lock(&varMutex);
+                writersInLibrary--;
+                printf("ReaderQ: %d WriterQ: %d [in: R:%d W:%d]\n",
+                        readersInQueue, writersInQueue, readersInLibrary, writersInLibrary);
+            pthread_mutex_unlock(&varMutex);
+        pthread_mutex_unlock(&libraryMutex);
+        pthread_cond_broadcast(&entryCond);
+
+        /* Sleep and enter the queue again */
+        usleep(rand() % uSecSleep);
+    }
+}
+
+int main(int argc, char** argv) {
+    printf("\nReaders - writers 2nd problem (writers priority)\n");
+    int readersCount, writersCount;
+    if ((argv[1] == NULL) || (argv[2]) == NULL ) {
+        printf("Number of readers > ");
+        if (scanf("%d", &readersCount) == EOF) perror_exit("scanf");
+        printf("Number of writers > ");
+        if (scanf("%d", &writersCount) == EOF) perror_exit("scanf");
+        printf("Starting in 1 sec...\n\n");
+        sleep(1);
+    } else {
+        readersCount = atoi(argv[1]);
+        writersCount = atoi(argv[2]);
+        printf("Number of Readers = %d\n", readersCount);
+        printf("Number of Writers = %d\n", writersCount);
+        printf("Starting in 2 sec...\n\n");
+        sleep(2);
+    }
+    srand(time(NULL));
+    pthread_t *readerThread = calloc(readersCount, sizeof(pthread_t));
+    pthread_t *writerThread = calloc(writersCount, sizeof(pthread_t));
+    long i = 0;
+    printf("ReaderQ: %d WriterQ: %d [in: R:%d W:%d]\n",
+            readersInQueue, writersInQueue, readersInLibrary, writersInLibrary);
+    for (i = 0; i < readersCount; ++i) {
+        if (pthread_create(&readerThread[i], NULL, readerF, (void*)i)) {
+            perror_exit("Error while creating reader thread (pthread_create)");
+        }
+    }
+    for (i = 0; i < writersCount; ++i) {
+        if (pthread_create(&writerThread[i], NULL, writerF, (void*)i)) {
+            perror_exit("Error while creating writer thread (pthread_create)");
+        }
+    }
+    for (i = 0; i < readersCount; ++i) {
+        if (pthread_join(readerThread[i], NULL)) {  // wait for thread finish which will not happen
+            perror_exit("Error while waiting for reader thread termination (pthread_join)");
+        }
+    }
+    free(readerThread);
+    for (i = 0; i < writersCount; ++i) {
+        if (pthread_join(writerThread[i], NULL)) {
+            perror_exit("Error while waiting for writer thread termination (pthread_join)");
+        }
+    }
+    free(writerThread);
+    pthread_cond_destroy(&entryCond);
+    pthread_mutex_destroy(&varMutex);
+    pthread_mutex_destroy(&libraryMutex);
+}#include <stdio.h>
+#include <time.h>
+#include <stdlib.h>
+#include <pthread.h>
+
+int readersInQueue = 0;
+int writersInQueue = 0;
+int readersInLibrary = 0;
+int writersInLibrary = 0;
+pthread_mutex_t varMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t libraryMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t entryCond = PTHREAD_COND_INITIALIZER;
+unsigned long uSecSleep = 2000000;
+
+perror_exit(char* errorStr) {
+    perror(errorStr);
+    exit(EXIT_FAILURE);
+}
+
+void *readerF(void* arg) {
+    while (1) {
+        pthread_mutex_lock(&varMutex);
+            readersInQueue++;
+            printf("ReaderQ: %d WriterQ: %d [in: R:%d W:%d]\n",
+                    readersInQueue, writersInQueue, readersInLibrary, writersInLibrary);
+        pthread_mutex_unlock(&varMutex);
+
+        pthread_mutex_lock(&libraryMutex);
+            pthread_mutex_lock(&varMutex);
+                while (writersInQueue || writersInLibrary) {    // Writers have higher prioritu
+                    pthread_mutex_unlock(&varMutex);
+                    pthread_cond_wait(&entryCond, &libraryMutex);
+                    pthread_mutex_lock(&varMutex);
+                }
+                readersInQueue--;
+                readersInLibrary++;
+                printf("ReaderQ: %d WriterQ: %d [in: R:%d W:%d]\n",
+                        readersInQueue, writersInQueue, readersInLibrary, writersInLibrary);
+            pthread_mutex_unlock(&varMutex);
+        pthread_mutex_unlock(&libraryMutex);
+        pthread_cond_broadcast(&entryCond);
+
+        /* Reading... */
+        usleep(rand() % uSecSleep);
+
+        pthread_mutex_lock(&libraryMutex);
+            pthread_mutex_lock(&varMutex);
+                readersInLibrary--;
+                printf("ReaderQ: %d WriterQ: %d [in: R:%d W:%d]\n",
+                        readersInQueue, writersInQueue, readersInLibrary, writersInLibrary);
+            pthread_mutex_unlock(&varMutex);
+        pthread_mutex_unlock(&libraryMutex);
+        pthread_cond_broadcast(&entryCond);
+
+        /* Sleep and enter the queue again */
+        usleep(rand() % uSecSleep);
+    }
+}
+
+void *writerF(void* arg){
+    while (1) {
+        pthread_mutex_lock(&varMutex);
+            writersInQueue++;
+            printf("ReaderQ: %d WriterQ: %d [in: R:%d W:%d]\n",
+                    readersInQueue, writersInQueue, readersInLibrary, writersInLibrary);
+        pthread_mutex_unlock(&varMutex);
+
+        pthread_mutex_lock(&libraryMutex);
+            pthread_mutex_lock(&varMutex);
+                while (readersInLibrary || writersInLibrary) {
+                    pthread_mutex_unlock(&varMutex);
+                    pthread_cond_wait(&entryCond, &libraryMutex);
+                    pthread_mutex_lock(&varMutex);
+                }
+                writersInQueue--;
+                writersInLibrary++;
+                printf("ReaderQ: %d WriterQ: %d [in: R:%d W:%d]\n",
+                        readersInQueue, writersInQueue, readersInLibrary, writersInLibrary);
+            pthread_mutex_unlock(&varMutex);
+        pthread_mutex_unlock(&libraryMutex);
+
+        /* Writing... */
+        usleep(rand() % uSecSleep);
+
+        pthread_mutex_lock(&libraryMutex);
+            pthread_mutex_lock(&varMutex);
+                writersInLibrary--;
+                printf("ReaderQ: %d WriterQ: %d [in: R:%d W:%d]\n",
+                        readersInQueue, writersInQueue, readersInLibrary, writersInLibrary);
+            pthread_mutex_unlock(&varMutex);
+        pthread_mutex_unlock(&libraryMutex);
+        pthread_cond_broadcast(&entryCond);
+
+        /* Sleep and enter the queue again */
+        usleep(rand() % uSecSleep);
+    }
+}
+
+int main(int argc, char** argv) {
+    printf("\nReaders - writers 2nd problem (writers priority)\n");
+    int readersCount, writersCount;
+    if ((argv[1] == NULL) || (argv[2]) == NULL ) {
+        printf("Number of readers > ");
+        if (scanf("%d", &readersCount) == EOF) perror_exit("scanf");
+        printf("Number of writers > ");
+        if (scanf("%d", &writersCount) == EOF) perror_exit("scanf");
+        printf("Starting in 1 sec...\n\n");
+        sleep(1);
+    } else {
+        readersCount = atoi(argv[1]);
+        writersCount = atoi(argv[2]);
+        printf("Number of Readers = %d\n", readersCount);
+        printf("Number of Writers = %d\n", writersCount);
+        printf("Starting in 2 sec...\n\n");
+        sleep(2);
+    }
+    srand(time(NULL));
+    pthread_t *readerThread = calloc(readersCount, sizeof(pthread_t));
+    pthread_t *writerThread = calloc(writersCount, sizeof(pthread_t));
+    long i = 0;
+    printf("ReaderQ: %d WriterQ: %d [in: R:%d W:%d]\n",
+            readersInQueue, writersInQueue, readersInLibrary, writersInLibrary);
+    for (i = 0; i < readersCount; ++i) {
+        if (pthread_create(&readerThread[i], NULL, readerF, (void*)i)) {
+            perror_exit("Error while creating reader thread (pthread_create)");
+        }
+    }
+    for (i = 0; i < writersCount; ++i) {
+        if (pthread_create(&writerThread[i], NULL, writerF, (void*)i)) {
+            perror_exit("Error while creating writer thread (pthread_create)");
+        }
+    }
+    for (i = 0; i < readersCount; ++i) {
+        if (pthread_join(readerThread[i], NULL)) {  // wait for thread finish which will not happen
+            perror_exit("Error while waiting for reader thread termination (pthread_join)");
+        }
+    }
+    free(readerThread);
+    for (i = 0; i < writersCount; ++i) {
+        if (pthread_join(writerThread[i], NULL)) {
+            perror_exit("Error while waiting for writer thread termination (pthread_join)");
+        }
+    }
+    free(writerThread);
+    pthread_cond_destroy(&entryCond);
+    pthread_mutex_destroy(&varMutex);
+    pthread_mutex_destroy(&libraryMutex);
 }
