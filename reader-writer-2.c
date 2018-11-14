@@ -42,7 +42,7 @@ pthread_mutex_t libraryMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t entryCond = PTHREAD_COND_INITIALIZER;
 unsigned long uSecSleep = 1500000;
 
-perror_exit(char* errorStr) 
+int perror_exit(char* errorStr) 
 {
     perror(errorStr);
     exit(EXIT_FAILURE);
