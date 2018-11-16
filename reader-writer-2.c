@@ -44,6 +44,11 @@ unsigned long uSecSleep = 1500000;
 
 int perror_exit(char* errorStr) 
 {
+/*	Helper function for perror 
+ *	handles the error message and exits 
+ *	program on fault
+ */
+
     perror(errorStr);
     exit(EXIT_FAILURE);
 }
@@ -60,6 +65,11 @@ void *readerFunction(void* arg) {
 *
 */
 
+    //clock initialization
+    clock_t  begin;
+
+    begin = clock();
+
     while (true) 
     {
 
@@ -68,8 +78,6 @@ void *readerFunction(void* arg) {
 	 */
 
 	
-
-
         pthread_mutex_lock(&variableMutex);
            
            Readers_In_Queue++;
@@ -130,7 +138,19 @@ void *readerFunction(void* arg) {
         usleep(rand() % uSecSleep);
 
 
+	//each thread will run for 10 seconds 
+	//before breaking out of loop and killing thread
+	if ((double)(clock() - begin) >= 10.0)
+	{
+		break;
+	}
+	else
+	{
+		continue;
+	}
     }
+
+    pthread_exit(kill);
 }
 
 void *writerFunction(void* arg){
@@ -141,7 +161,11 @@ void *writerFunction(void* arg){
  *	@void* arg: passed input argument is thread number
  *
  *
- */	
+ */
+    //clock innitalization	
+    clock_t begin;
+
+    begin = clock();
 
     while (true) 
     {
@@ -182,7 +206,7 @@ void *writerFunction(void* arg){
                         Readers_In_Queue, Writers_In_Queue, Readers_In_Library, Writers_In_Library);
            
         /* We dont brodcast an unblock of our conditional here 
-	 * since oter writers might be waiting to enter the library
+	 * since other writers might be waiting to enter the library
 	 */
             pthread_mutex_unlock(&variableMutex);
         pthread_mutex_unlock(&libraryMutex);
@@ -209,7 +233,22 @@ void *writerFunction(void* arg){
         // Sleep and enter the queue again 
         usleep(rand() % uSecSleep);
 
+
+	//each threads will only run for 10 seconds 
+	// before breaking out of loop and killing thread
+	if ((double)(clock() - begin) >= 10)
+	{
+		break;
+	}
+	else
+	{
+		continue;
+	}	
+			
+
     }
+
+    pthread_exit(kill);
 }
 
 int main(int argc, char** argv) {
@@ -226,12 +265,17 @@ int main(int argc, char** argv) {
     */
     if ((argv[1] == NULL) || (argv[2]) == NULL ) 
     {
-        printf("Number of readers > ");
-        if (scanf("%d", &userReaderCount) == EOF) perror_exit("scanf");
-        printf("Number of writers > ");
-        if (scanf("%d", &userWriterCount) == EOF) perror_exit("scanf");
-        printf("Starting program\n\n");
-        sleep(1);
+        printf("Number of readers = ");
+        if (scanf("%d", &userReaderCount) == EOF) 
+		perror_exit("scanf");
+        
+	printf("Number of writers = ");
+        if (scanf("%d", &userWriterCount) == EOF) 
+		perror_exit("scanf");
+        
+	printf("Starting program\n\n");
+        
+	sleep(1);
 
     } 
     else 
@@ -239,10 +283,12 @@ int main(int argc, char** argv) {
         
         userReaderCount = atoi(argv[1]);
         userWriterCount = atoi(argv[2]);
-        printf("Number of Readers = %d\n", userReaderCount);
+        
+	printf("Number of Readers = %d\n", userReaderCount);
         printf("Number of Writers = %d\n", userWriterCount);
         printf("Starting program\n\n");
-        sleep(1);
+        
+	sleep(1);
     }
     
     //random seed
@@ -267,6 +313,7 @@ int main(int argc, char** argv) {
         {
             perror_exit("Error while creating reader thread (pthread_create)");
         }
+	
     }
    
     // create writer threads for total number 
@@ -280,11 +327,7 @@ int main(int argc, char** argv) {
     }
    //wait for reader threads to terminate
 
-    clock_t begin_reader, begin_writer;
-   double time_spent = 0.0;
-   unsigned int k;
-   begin_reader = clock();
-   
+  
 
     for (i = 0; i < userReaderCount; ++i) 
     {
