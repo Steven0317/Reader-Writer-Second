@@ -80,10 +80,10 @@ void *readerFunction(void* arg) {
 	
         pthread_mutex_lock(&variableMutex);
            
-           Readers_In_Queue++;
+        Readers_In_Queue++;
            
-            printf("ReaderQueue: %d WriterQueue: %d [in: R:%d W:%d]\n",
-                    Readers_In_Queue, Writers_In_Queue, Readers_In_Library, Writers_In_Library);
+        printf("ReaderQueue: %d WriterQueue: %d [in: R:%d W:%d]\n",
+                Readers_In_Queue, Writers_In_Queue, Readers_In_Library, Writers_In_Library);
        
     
         pthread_mutex_unlock(&variableMutex);
@@ -92,28 +92,28 @@ void *readerFunction(void* arg) {
 
          
         pthread_mutex_lock(&libraryMutex);
-            pthread_mutex_lock(&variableMutex);
+        pthread_mutex_lock(&variableMutex);
                 
                  /* Writeres are given highest priority
 		  * if any writers are waiting, lock the library 
 		  * to keep readers from entering 
 		  */
-                while (Writers_In_Queue || Writers_In_Library) 
-                {   
+            while (Writers_In_Queue || Writers_In_Library) 
+            {   
                 
                     pthread_mutex_unlock(&variableMutex);
                     pthread_cond_wait(&entryCond, &libraryMutex);
                     pthread_mutex_lock(&variableMutex);
-                }
+            }
 
-                Readers_In_Queue--;
-                Readers_In_Library++;
+            Readers_In_Queue--;
+            Readers_In_Library++;
                 
-                printf("ReaderQueue: %d WriterQueue: %d [in: R:%d W:%d]\n",
-                        Readers_In_Queue, Writers_In_Queue, Readers_In_Library, Writers_In_Library);
+            printf("ReaderQueue: %d WriterQueue: %d [in: R:%d W:%d]\n",
+                    Readers_In_Queue, Writers_In_Queue, Readers_In_Library, Writers_In_Library);
             
         	
-            pthread_mutex_unlock(&variableMutex);
+        pthread_mutex_unlock(&variableMutex);
         pthread_mutex_unlock(&libraryMutex);
         pthread_cond_broadcast(&entryCond);
 
@@ -122,14 +122,14 @@ void *readerFunction(void* arg) {
 
         pthread_mutex_lock(&libraryMutex);
            
-            pthread_mutex_lock(&variableMutex);
+        pthread_mutex_lock(&variableMutex);
                
-                Readers_In_Library--;
+        Readers_In_Library--;
                 
-                printf("ReaderQueue: %d WriterQueue: %d [in: R:%d W:%d]\n",
-                        Readers_In_Queue, Writers_In_Queue, Readers_In_Library, Writers_In_Library);
+            printf("ReaderQueue: %d WriterQueue: %d [in: R:%d W:%d]\n",
+                    Readers_In_Queue, Writers_In_Queue, Readers_In_Library, Writers_In_Library);
            
-	       	pthread_mutex_unlock(&variableMutex);
+	    pthread_mutex_unlock(&variableMutex);
        
         pthread_mutex_unlock(&libraryMutex);
         pthread_cond_broadcast(&entryCond);
@@ -176,10 +176,10 @@ void *writerFunction(void* arg){
 	 */
         pthread_mutex_lock(&variableMutex);
            
-            Writers_In_Queue++;
+        Writers_In_Queue++;
             
-            printf("ReaderQueue: %d WriterQueue: %d [in: R:%d W:%d]\n",
-                    Readers_In_Queue, Writers_In_Queue, Readers_In_Library, Writers_In_Library);
+        printf("ReaderQueue: %d WriterQueue: %d [in: R:%d W:%d]\n",
+                Readers_In_Queue, Writers_In_Queue, Readers_In_Library, Writers_In_Library);
        
    
        pthread_mutex_unlock(&variableMutex);
@@ -188,27 +188,27 @@ void *writerFunction(void* arg){
 
         pthread_mutex_lock(&libraryMutex);
            
-            pthread_mutex_lock(&variableMutex);
+        pthread_mutex_lock(&variableMutex);
                 
-                while (Readers_In_Library || Writers_In_Library) 
-                {
+            while (Readers_In_Library || Writers_In_Library) 
+            {
                 
                     pthread_mutex_unlock(&variableMutex);
                     pthread_cond_wait(&entryCond, &libraryMutex);
                     pthread_mutex_lock(&variableMutex);
-                }
+            }
                
-                Writers_In_Queue--;
-                Writers_In_Library++;
+            Writers_In_Queue--;
+            Writers_In_Library++;
            
 
-                printf("ReaderQueue: %d WriterQueue: %d [in: R:%d W:%d]\n",
-                        Readers_In_Queue, Writers_In_Queue, Readers_In_Library, Writers_In_Library);
+            printf("ReaderQueue: %d WriterQueue: %d [in: R:%d W:%d]\n",
+                    Readers_In_Queue, Writers_In_Queue, Readers_In_Library, Writers_In_Library);
            
         /* We dont brodcast an unblock of our conditional here 
 	 * since other writers might be waiting to enter the library
 	 */
-            pthread_mutex_unlock(&variableMutex);
+        pthread_mutex_unlock(&variableMutex);
         pthread_mutex_unlock(&libraryMutex);
 
         //Simulate writing from file /data from buffer 
@@ -216,16 +216,16 @@ void *writerFunction(void* arg){
 
         pthread_mutex_lock(&libraryMutex);
 
-      	    pthread_mutex_lock(&variableMutex);
+      	pthread_mutex_lock(&variableMutex);
                 
-                Writers_In_Library--;
+        Writers_In_Library--;
            
 
-                printf("ReaderQueue: %d WriterQueue: %d [in: R:%d W:%d]\n",
-                        Readers_In_Queue, Writers_In_Queue, Readers_In_Library, Writers_In_Library);
+        printf("ReaderQueue: %d WriterQueue: %d [in: R:%d W:%d]\n",
+                Readers_In_Queue, Writers_In_Queue, Readers_In_Library, Writers_In_Library);
             
         
-            pthread_mutex_unlock(&variableMutex);
+        pthread_mutex_unlock(&variableMutex);
         
         pthread_mutex_unlock(&libraryMutex);
         pthread_cond_broadcast(&entryCond);
