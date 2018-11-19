@@ -41,6 +41,8 @@ pthread_mutex_t variableMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t libraryMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t entryCond = PTHREAD_COND_INITIALIZER;
 unsigned long uSecSleep = 1500000;
+double duration;
+
 
 int perror_exit(char* errorStr) 
 {
@@ -140,7 +142,7 @@ void *readerFunction(void* arg) {
 
 	//each thread will run for 10 seconds 
 	//before breaking out of loop and killing thread
-	if ((double)(clock() - begin) >= 10.0)
+	if ((double)(clock() - begin) >= duration)
 	{
 		break;
 	}
@@ -236,7 +238,7 @@ void *writerFunction(void* arg){
 
 	//each threads will only run for 10 seconds 
 	// before breaking out of loop and killing thread
-	if ((double)(clock() - begin) >= 10)
+	if ((double)(clock() - begin) >= duration)
 	{
 		break;
 	}
@@ -263,7 +265,7 @@ int main(int argc, char** argv) {
     *   parameters if they return null.
     *
     */
-    if ((argv[1] == NULL) || (argv[2]) == NULL ) 
+    if ((argv[1] == NULL) || (argv[2]) == NULL || (argv[3] == NULL ))
     {
         printf("Number of readers = ");
         if (scanf("%d", &userReaderCount) == EOF) 
@@ -272,7 +274,10 @@ int main(int argc, char** argv) {
 	printf("Number of writers = ");
         if (scanf("%d", &userWriterCount) == EOF) 
 		perror_exit("scanf");
-        
+        printf("Duration of each thread = ");
+	if( scanf("%lf", &duration) == EOF)
+		perror_exit("scanf");
+
 	printf("Starting program\n\n");
         
 	sleep(1);
@@ -325,10 +330,8 @@ int main(int argc, char** argv) {
             perror_exit("Error while creating writer thread (pthread_create)");
         }
     }
+
    //wait for reader threads to terminate
-
-  
-
     for (i = 0; i < userReaderCount; ++i) 
     {
     
